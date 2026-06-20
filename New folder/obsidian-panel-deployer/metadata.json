@@ -1,0 +1,6 @@
+{
+  "name": "Obsidian Panel Deployer",
+  "description": "An elegant deployment dashboard that automates Cloudflare Workers, KV, and D1 database provisioning for Obsidian Panel, featuring real-time logging and local deployment history alongside Python Flet implementation exporter.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
