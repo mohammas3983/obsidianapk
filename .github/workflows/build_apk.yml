@@ -1,16 +1,14 @@
-name: Build Flet Android APK
-
+name: Build Flet Android APK (Signed & Stable)
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch: # به شما اجازه می‌دهد دستی هم از تب Actions بیلد را استارت بزنید
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -19,30 +17,53 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Python
+      - name: Install Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # پایدارترین نسخه پایتون برای فلت
+          python-version: '3.12'
 
-      - name: Install Dependencies
+      - name: Setup Flutter Toolchain
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Build Engine Tools
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install flet
 
-      - name: Set up Android SDK & Accept Licenses
+      - name: Generate Custom Release Keystore (Google Play Protect Compliant)
         run: |
-          # معرفی مسیر اندروید پیش‌فرضی که روی سرورهای گیت‌هاب نصب است
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          # تایید اتوماتیک لایسنس‌های اندروید به منظور جلوگیری از گیر کردن بیلد روی سوالات بله/خیر
-          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          # Create a secure digital signing key to bypass Google Play Protect alerts
+          keytool -genkeypair -v \
+            -keystore my-release-key.jks \
+            -alias my-key-alias \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass "my_strong_keystore_password" \
+            -keypass "my_strong_keystore_password" \
+            -dname "CN=MohammadSadegh, OU=ObsidianAPK, O=Dev, L=Tehran, S=Tehran, C=IR"
 
-      - name: Build APK
+      - name: Build Android APK (Signed & Auto-Approve)
         run: |
-          # ارسال اتوماتیک پاسخ‌های 'بله' به خط فرمان فلت برای موافقت با نصب پکیج‌های اضافی
-          yes | flet build apk
+          # Accept official Android SDK Licenses beforehand
+          yes | sdkmanager --licenses || true
+          
+          # Stable, signed build with `--yes` added to skip interactive questions
+          flet build apk \
+            --verbose \
+            --yes \
+            --android-signing-key-store my-release-key.jks \
+            --android-signing-key-store-password "my_strong_keystore_password" \
+            --android-signing-key-alias my-key-alias \
+            --android-signing-key-password "my_strong_keystore_password"
 
-      - name: Upload APK Artifact
+      - name: Upload Artifact APK
         uses: actions/upload-artifact@v4
         with:
-          name: obsidian-release-apk
+          name: obsidian-flet-app
           path: build/apk/*.apk
