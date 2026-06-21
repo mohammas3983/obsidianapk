@@ -142,7 +142,7 @@ jobs:
           # کامپایل فوق‌العاده پایدار به همراه امضا جهت رسمیت برنامه در گوشی کاربر
           flet build apk \
             --verbose \
-            --android-signing-key-store my-release-key.jks \
+            --android-signing-key-store "$(pwd)/my-release-key.jks" \
             --android-signing-key-store-password "my_strong_keystore_password" \
             --android-signing-key-alias my-key-alias \
             --android-signing-key-password "my_strong_keystore_password"

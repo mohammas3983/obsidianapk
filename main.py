@@ -14,13 +14,13 @@ is_mobile = (
 if not is_mobile:
     import subprocess
     import importlib.util
-    REQUIRED_PACKAGES = ["flet", "httpx"]
+    REQUIRED_PACKAGES = ["flet", "requests"]
     for package in REQUIRED_PACKAGES:
         try:
             if package == "flet":
                 import flet
-            elif package == "httpx":
-                import httpx
+            elif package == "requests":
+                import requests
         except ImportError:
             print(f"Required package '{package}' is missing. Readying self-installation...")
             try:
@@ -31,7 +31,7 @@ if not is_mobile:
                 print("Please ensure your Python dynamic pip path has internet access.")
 
 import asyncio
-import httpx
+import requests
 import json
 import random
 import string
@@ -270,11 +270,10 @@ class ObsidianDeployerApp:
         try:
             # 1. dynamic script download from GitHub (OTA fetch)
             self.add_log("Downloading Obsidian Worker core from GitHub raw..." if self.lang=="en" else "در حال دریافت کد خام ورکر از گیت‌هاب...", "info")
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(GITHUB_WORKER_URL)
-                if resp.status_code != 200:
-                    raise Exception(f"Unable to read worker code: HTTP {resp.status_code}")
-                worker_code = resp.text
+            resp = await asyncio.to_thread(requests.get, GITHUB_WORKER_URL, timeout=15)
+            if resp.status_code != 200:
+                raise Exception(f"Unable to read worker code: HTTP {resp.status_code}")
+            worker_code = resp.text
             self.add_log("Worker source code fetched!" if self.lang=="en" else "کد منبع ورکر با موفقیت دانلود شد!", "success")
 
             headers = {
@@ -289,45 +288,43 @@ class ObsidianDeployerApp:
             self.add_log("Resolving Cloudflare KV namespace title..." if self.lang=="en" else "پیکربندی تداخل نام و ثبت کش KV...", "info")
             kv_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/storage/kv/namespaces"
             
-            async with httpx.AsyncClient() as client:
-                get_kv = await client.get(kv_url, headers=headers)
-                if get_kv.status_code != 200:
-                    raise Exception(f"KV Service Failed: {get_kv.text}")
-                kv_json = get_kv.json()
-                
-                existing_kvs = [kv["title"] for kv in kv_json.get("result", [])] if kv_json.get("success") else []
-                actual_kv = base_kv_name
-                if actual_kv in existing_kvs:
-                    actual_kv = f"{base_kv_name}-{generate_suffix()}"
-                    self.add_log(f"Collision resolved. Creating unique KV style: {actual_kv}", "warn")
-                
-                post_kv = await client.post(kv_url, headers=headers, json={"title": actual_kv})
-                kv_res = post_kv.json()
-                if not kv_res.get("success"):
-                    raise Exception(f"KV Creation failed: {kv_res['errors'][0]['message']}")
-                kv_id = kv_res["result"]["id"]
+            get_kv = await asyncio.to_thread(requests.get, kv_url, headers=headers, timeout=15)
+            if get_kv.status_code != 200:
+                raise Exception(f"KV Service Failed: {get_kv.text}")
+            kv_json = get_kv.json()
+            
+            existing_kvs = [kv["title"] for kv in kv_json.get("result", [])] if kv_json.get("success") else []
+            actual_kv = base_kv_name
+            if actual_kv in existing_kvs:
+                actual_kv = f"{base_kv_name}-{generate_suffix()}"
+                self.add_log(f"Collision resolved. Creating unique KV style: {actual_kv}", "warn")
+            
+            post_kv = await asyncio.to_thread(requests.post, kv_url, headers=headers, json={"title": actual_kv}, timeout=15)
+            kv_res = post_kv.json()
+            if not kv_res.get("success"):
+                raise Exception(f"KV Creation failed: {kv_res['errors'][0]['message']}")
+            kv_id = kv_res["result"]["id"]
             self.add_log("KV storage provisioned!" if self.lang=="en" else "انبار داده موقت KV با موفقیت ساخته شد!", "success")
 
             # 3. Check/create D1 Database
             self.add_log("Provisioning Cloudflare D1 Relational Engine..." if self.lang=="en" else "در حال بررسی و ساخت دیتابیس D1 کلودفلر...", "info")
             d1_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/d1/database"
-            async with httpx.AsyncClient() as client:
-                get_d1 = await client.get(d1_url, headers=headers)
-                if get_d1.status_code != 200:
-                    raise Exception(f"D1 Fetch Failed: {get_d1.text}")
-                d1_json = get_d1.json()
-                
-                existing_d1s = [db["name"] for db in d1_json.get("result", [])] if d1_json.get("success") else []
-                actual_d1 = base_d1_name
-                if actual_d1 in existing_d1s:
-                    actual_d1 = f"{base_d1_name}-{generate_suffix()}"
-                    self.add_log(f"Database collision handled. Name: {actual_d1}", "warn")
+            get_d1 = await asyncio.to_thread(requests.get, d1_url, headers=headers, timeout=15)
+            if get_d1.status_code != 200:
+                raise Exception(f"D1 Fetch Failed: {get_d1.text}")
+            d1_json = get_d1.json()
+            
+            existing_d1s = [db["name"] for db in d1_json.get("result", [])] if d1_json.get("success") else []
+            actual_d1 = base_d1_name
+            if actual_d1 in existing_d1s:
+                actual_d1 = f"{base_d1_name}-{generate_suffix()}"
+                self.add_log(f"Database collision handled. Name: {actual_d1}", "warn")
 
-                post_d1 = await client.post(d1_url, headers=headers, json={"name": actual_d1})
-                db_res = post_d1.json()
-                if not db_res.get("success"):
-                    raise Exception(f"D1 DB failed: {db_res['errors'][0]['message']}")
-                d1_id = db_res["result"]["uuid"]
+            post_d1 = await asyncio.to_thread(requests.post, d1_url, headers=headers, json={"name": actual_d1}, timeout=15)
+            db_res = post_d1.json()
+            if not db_res.get("success"):
+                raise Exception(f"D1 DB failed: {db_res['errors'][0]['message']}")
+            d1_id = db_res["result"]["uuid"]
             self.add_log("D1 Database built successfully!" if self.lang=="en" else "پایگاه داده رابطه‌ای D1 ایجاد شد!", "success")
 
             # 4. Propagation Delay - strictly async
@@ -355,30 +352,27 @@ class ObsidianDeployerApp:
                 "main.js": ("main.js", worker_code, "application/javascript+module")
             }
 
-            async with httpx.AsyncClient() as client:
-                res_put = await client.put(deploy_url, headers=headers, files=files)
-                put_json = res_put.json()
-                if not put_json.get("success"):
-                    raise Exception(f"Upload failed: {put_json['errors'][0]['message']}")
+            res_put = await asyncio.to_thread(requests.put, deploy_url, headers=headers, files=files, timeout=30)
+            put_json = res_put.json()
+            if not put_json.get("success"):
+                raise Exception(f"Upload failed: {put_json['errors'][0]['message']}")
             self.add_log("Metadata scripts bound and deployed!" if self.lang=="en" else "ورکر با دیتابیس اوبسیدین بایند و دیپلوی شد!", "success")
 
             # 6. Enable global routing
             self.add_log("Enabling routing subdomain access..." if self.lang=="en" else "فعال‌سازی ساب‌دومین و آدرس عمومی ورکر...", "info")
             route_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/workers/scripts/{worker_name}/subdomain"
-            async with httpx.AsyncClient() as client:
-                res_route = await client.post(route_url, headers=headers, json={"enabled": True})
-                route_json = res_route.json()
-                if not route_json.get("success"):
-                    raise Exception(f"Subdomain mapping error: {route_json['errors'][0]['message']}")
+            res_route = await asyncio.to_thread(requests.post, route_url, headers=headers, json={"enabled": True}, timeout=15)
+            route_json = res_route.json()
+            if not route_json.get("success"):
+                raise Exception(f"Subdomain mapping error: {route_json['errors'][0]['message']}")
             
             # 7. Query subdomains
             sub_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/workers/subdomain"
             subdomain = "your-subdomain"
-            async with httpx.AsyncClient() as client:
-                res_sub = await client.get(sub_url, headers=headers)
-                sub_res = res_sub.json()
-                if sub_res.get("success") and sub_res.get("result"):
-                    subdomain = sub_res["result"]["subdomain"]
+            res_sub = await asyncio.to_thread(requests.get, sub_url, headers=headers, timeout=15)
+            sub_res = res_sub.json()
+            if sub_res.get("success") and sub_res.get("result"):
+                subdomain = sub_res["result"]["subdomain"]
             
             worker_url = f"https://{worker_name}.{subdomain}.workers.dev"
             self.add_log(f"Live worker mapped to URL: {worker_url}", "success")
@@ -389,12 +383,11 @@ class ObsidianDeployerApp:
             for probe in range(8):
                 try:
                     await asyncio.sleep(4)
-                    async with httpx.AsyncClient() as client:
-                        probe_chk = await client.get(worker_url, timeout=5.0)
-                        if probe_chk.status_code < 500 and probe_chk.status_code != 404:
-                            is_healthy = True
-                            self.add_log(f"Health check succeeded level {probe_chk.status_code}!" if self.lang=="en" else f"تایید ارتباط با موفقیت انجام شد (وضعیت {probe_chk.status_code})!", "success")
-                            break
+                    probe_chk = await asyncio.to_thread(requests.get, worker_url, timeout=5.0)
+                    if probe_chk.status_code < 550 and probe_chk.status_code != 404:
+                        is_healthy = True
+                        self.add_log(f"Health check succeeded level {probe_chk.status_code}!" if self.lang=="en" else f"تایید ارتباط با موفقیت انجام شد (وضعیت {probe_chk.status_code})!", "success")
+                        break
                 except:
                     pass
 
