@@ -1,22 +1,34 @@
 import sys
-import subprocess
-import importlib.util
+import os
 
-# =====================================================================
-# Automated Prerequisite Bootstrapper (Auto-install flet & httpx if missing)
-# =====================================================================
-REQUIRED_PACKAGES = ["flet", "httpx"]
+# Determine if running on mobile device (Android/iOS)
+is_mobile = (
+    sys.platform == "android" or
+    hasattr(sys, "getandroidapilevel") or
+    "ANDROID_ENTRYPOINT" in os.environ or
+    "ANDROID_ARGUMENT" in os.environ or
+    os.environ.get("SEARCH_ENGINE") == "serious_python"
+)
 
-for package in REQUIRED_PACKAGES:
-    if importlib.util.find_spec(package) is None:
-        print(f"Required package '{package}' is missing. Readying self-installation...")
+# Only verify and run pip if we are not on mobile (avoids importing subprocess/pip on mobile)
+if not is_mobile:
+    import subprocess
+    import importlib.util
+    REQUIRED_PACKAGES = ["flet", "httpx"]
+    for package in REQUIRED_PACKAGES:
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-            print(f"Successfully installed missing package '{package}'!")
-        except Exception as e:
-            print(f"Error during automated installation of '{package}': {e}")
-            print("Please ensure your Python dynamic pip path has internet access.")
-            sys.exit(1)
+            if package == "flet":
+                import flet
+            elif package == "httpx":
+                import httpx
+        except ImportError:
+            print(f"Required package '{package}' is missing. Readying self-installation...")
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+                print(f"Successfully installed missing package '{package}'!")
+            except Exception as e:
+                print(f"Error during automated installation of '{package}': {e}")
+                print("Please ensure your Python dynamic pip path has internet access.")
 
 import asyncio
 import httpx
